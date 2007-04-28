@@ -1,0 +1,23 @@
+---
+name: Module-Packaged-Report
+version: 0.01
+author:
+  - Gabor Szabo
+abstract: Generate report upon packages of CPAN distributions
+license: perl
+resources:
+  license: http://dev.perl.org/licenses/
+requires:
+  Getopt::Long: 0
+  HTML::Template: 0
+  Module::Packaged: 0.86
+build_requires:
+  Test::More: 0.47
+provides:
+  Module::Packaged::Report:
+    file: lib/Module/Packaged/Report.pm
+    version: 0.01
+generated_by: Module::Build version 0.2807
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.2.html
+  version: 1.2
