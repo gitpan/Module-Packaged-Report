@@ -14,6 +14,8 @@ my $builder = Module::Build->new(
         'Module::Packaged'       => '0.86',
         'Getopt::Long'           => '0',
         'HTML::Template'         => '0',
+        'Parse::CPAN::Packages'  => '0',
+        'App::Cache'             => '0',
     },
     build_requires        => {
         'Test::More'                => '0.47',

@@ -5,9 +5,11 @@ WriteMakefile
           'NAME' => 'Module::Packaged::Report',
           'VERSION_FROM' => 'lib/Module/Packaged/Report.pm',
           'PREREQ_PM' => {
+                           'App::Cache' => '0',
                            'Getopt::Long' => '0',
                            'HTML::Template' => '0',
                            'Module::Packaged' => '0.86',
+                           'Parse::CPAN::Packages' => '0',
                            'Test::More' => '0.47'
                          },
           'INSTALLDIRS' => 'site',

@@ -6,11 +6,12 @@ use Module::Packaged;
 use HTML::Template;
 use File::Spec;
 use File::Path   qw(mkpath);
+use Parse::CPAN::Packages;
+use App::Cache;
 
 use Data::Dumper qw(Dumper);
 
-our $VERSION = '0.01';
-
+our $VERSION = '0.02';
 
 sub new {
     my ($class, %opts) = @_;
@@ -21,6 +22,11 @@ sub new {
     $self->{opts} = \%opts;
     $self->{p} = Module::Packaged->new();
     $self->{_timestamp} = time;
+
+    my $cache = App::Cache->new({ ttl => 60 * 60 });
+    my $data = $cache->get_url('http://www.cpan.org/modules/02packages.details.txt.gz');
+    $self->{pcp} = Parse::CPAN::Packages->new($data);
+
     return $self;
 }
 
@@ -42,7 +48,9 @@ sub generate_html_report {
     my ($self) = @_;
 
     my $dir = $self->_dir;
-    mkpath $dir;
+    mkpath (File::Spec->catfile($dir, 'letters'));
+    mkpath (File::Spec->catfile($dir, 'distros'));
+    mkpath (File::Spec->catfile($dir, 'authors'));
 
     $self->_save_style;
 
@@ -51,15 +59,51 @@ sub generate_html_report {
         $self->_generate_report_for_letter($letter);
     }
 
-    my $template = $self->_index_tmpl();
-    my $t = HTML::Template->new_scalar_ref(\$template, die_on_bad_params => 1);
     my @letters_hashes = map {{letter => $_}} @letters;
-    $t->param(letters      => \@letters_hashes);
-    $t->param(footer        => $self->_footer());
+    $self->create_file(
+            template => $self->_index_tmpl(),
+            filename => File::Spec->catfile($self->_dir, "index.html"),
+            params => {
+                letters      => \@letters_hashes,
+                footer        => $self->_footer(),
+                %{ $self->{count} },
+            },
+    );
 
-    my $filename = File::Spec->catfile($self->_dir, "index.html");
-    open my $fh, '>', $filename  or die "Could not open '$filename' $!";
-    print {$fh} $t->output;
+    # per distribution reports
+    foreach my $distro (keys %{ $self->{distros} }) {
+        #print "$distro\n";
+        my $name = $distro eq 'mandrake' ? 'mandriva' : $distro;
+
+        $self->create_file(
+            template => $self->_modules_in_distro_report_tmpl,
+            filename => File::Spec->catfile($self->_dir, 'distros', "$name.html"),
+            params => {
+                distro  => ucfirst($name),
+                modules => $self->{distros}{$distro},
+            },
+        );
+    }
+
+    foreach my $cpanid (keys %{ $self->{authors} }) {
+        $self->create_file(
+            template => $self->_report_tmpl,
+            filename => File::Spec->catfile($self->_dir, 'authors', "$cpanid.html"),
+            params => {
+                distros      => $self->{authors}{$cpanid},
+                footer       => $self->_footer(),
+            },
+        );
+    }
+    my @cpanids = map {{cpanid => $_}} sort keys %{ $self->{authors} };
+    $self->create_file(
+        template => $self->_authors_index_tmpl(),
+        filename => File::Spec->catfile($self->_dir, 'authors', "index.html"),
+        params => {
+            ids      => \@cpanids,
+            footer   => $self->_footer(),
+        },
+    );
 }
 
 
@@ -70,25 +114,58 @@ sub _generate_report_for_letter {
 
     my @distros;
     my %packagers; # we are only interested in the keys here
-    foreach my $name (@module_names) {
-        my $dists = $self->{p}->check($name);
+    foreach my $dash_name (@module_names) {
+        my $dists = $self->{p}->check($dash_name);
+        my $name = $dash_name;
+        $name =~ s/-/::/g;
+
+        $self->{count}{cpan}++;
         next if 1 >= keys %$dists; # skip modules that are only on CPAN
+
+        # collect data for list of modules in a single distro
+        foreach my $distro (keys %$dists) {
+            $self->{count}{$distro}++;
+            next if $distro eq 'cpan';
+            push @{ $self->{distros}{$distro} }, {
+                name    => $name,
+                version => $dists->{$distro},
+                cpan    => $dists->{cpan},
+            };
+        }
         $dists->{name} = $name;
         push @distros, $dists;
+
+        my $m = $self->{pcp}->package($name);
+        if ($m) {
+            my $d = $m->distribution;
+            push @{ $self->{authors}{uc $d->cpanid} }, $dists;
+        } else {
+            warn "No package for '$name'\n";
+        }
+
         %packagers = (%packagers, %$dists);
         #print Dumper $dists;
     }
     my @packagers = map {{name => $_}} sort keys %packagers;
     
 
-    my $template = $self->_report_tmpl();
-    my $t = HTML::Template->new_scalar_ref(\$template, die_on_bad_params => 1);
-    #$t->param(packagers    => \@packagers);
-    $t->param(distros      => \@distros);
-    $t->param(footer        => $self->_footer());
+    $self->create_file(
+            template => $self->_report_tmpl(),
+            filename => File::Spec->catfile($self->_dir, 'letters', "$letter.html"),
+            params => {
+                #packagers    => \@packagers,
+                distros      => \@distros,
+                footer       => $self->_footer(),
+            },
+    );
+}
 
-    my $filename = File::Spec->catfile($self->_dir, "$letter.html");
-    open my $fh, '>', $filename  or die "Could not open '$filename' $!";
+sub create_file {
+    my ($self, %args) = @_;
+
+    my $t = HTML::Template->new_scalar_ref(\$args{template}, die_on_bad_params => 1);
+    $t->param(%{ $args{params} });
+    open my $fh, '>', $args{filename}  or die "Could not open '$args{filename}' $!";
     print {$fh} $t->output;
 }
 
@@ -117,6 +194,29 @@ sub _dir {
 #  </TMPL_LOOP>
 #</tr>
 
+sub _authors_index_tmpl {
+    return <<'END_TMPL';
+<html>
+<head>
+  <title>CPAN Modules in Distributions per author</title>
+  <link rel="stylesheet" type="text/css" href="../style.css" /> 
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+</head>
+<body>
+<center><h1>CPAN Modules in Distributions per author</h1></center>
+<p>
+<a href="../index.html">index</a>
+<p>
+<TMPL_LOOP ids>
+  <a href="<TMPL_VAR cpanid>.html"><TMPL_VAR cpanid></a><br />
+</TMPL_LOOP>
+<TMPL_VAR footer>
+</body>
+</html>
+END_TMPL
+
+}
 sub _index_tmpl {
     return <<'END_TMPL';
 <html>
@@ -130,15 +230,39 @@ sub _index_tmpl {
 <center><h1>CPAN Modules in Distributions</h1></center>
 Modules starting with letter
 <TMPL_LOOP letters>
-  <a href="<TMPL_VAR letter>.html"><TMPL_VAR letter></a>&nbsp;
+  <a href="letters/<TMPL_VAR letter>.html"><TMPL_VAR letter></a>&nbsp;
 </TMPL_LOOP>
+<p>
+<a href="authors/">Authors</a>
+<p>
+Total number of modules in each distribution:
+<table>
+<tr>
+    <td>CPAN</td>
+    <td>Debian</td>
+    <td>Fedora</td>
+    <td>FreeBSD</td>
+    <td>Mandriva</td>
+    <td>OpenBSD</td>
+    <td>Suse</td>
+<tr>
+    <td><TMPL_VAR cpan></td>
+    <td><a href="distros/debian.html"><TMPL_VAR debian></a></td>
+    <td><a href="distros/fedora.html"><TMPL_VAR fedora></a></td>
+    <td><a href="distros/freebsd.html"><TMPL_VAR freebsd></a></td>
+    <td><a href="distros/mandriva.html"><TMPL_VAR mandrake></a></td>
+    <td><a href="distros/openbsd.html"><TMPL_VAR openbsd></a></td>
+    <td><a href="distros/suse.html"><TMPL_VAR suse></a></td>
+</tr>
+</table>
+
 <p>
 Wishes: 
 <ul>
- <li>Include Sun Solaris, AIX, HP-UNIX etc</li>
+ <li>Include Ubuntu, RedHat, Gentoo, Sun Solaris, AIX, HP-UNIX etc</li>
  <li>Separate Debian stable and testing</li>
- <li>Ubuntu (separated to its versions and also universe and backport reported separately)</li>
- <li>ACtiveState distributions</li>
+ <li>Separate the report for standard, universe and backport repositories</li>
+ <li>Include ActiveState distributions</li>
 </ul>
 </p>
 
@@ -175,6 +299,10 @@ table {
 td {
     border-width: 1px;
     border-style: solid;
+    text-align: center;
+}
+.name {
+    text-align: left;
 }
 </style>
 
@@ -182,31 +310,65 @@ END_CSS
 
 }
 
+sub _modules_in_distro_report_tmpl {
+    return <<'END_TMPL';
+<html>
+<head>
+  <title>CPAN Modules in <TMPL_VAR distro></title>
+  <link rel="stylesheet" type="text/css" href="../style.css" /> 
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+</head>
+<body>
+<h1>CPAN Modules in <TMPL_VAR distro></h1>
+<a href="../index.html">index</a>
+<table>
+<tr><td>Name</td>
+    <td>Version</td>
+    <td>Latest on CPAN</td>
+<TMPL_LOOP modules>
+  <tr>
+    <td class="name"><TMPL_VAR name></td>
+    <td><TMPL_VAR version></td>
+    <td><TMPL_VAR cpan></td>
+  </tr>
+</TMPL_LOOP>
+</table>
+
+<TMPL_VAR footer>
+
+</body>
+</html>
+END_TMPL
+
+}
+
+
 
 sub _report_tmpl {
     return <<'END_TMPL';
 <html>
 <head>
   <title>CPAN Modules in Distributions</title>
-  <link rel="stylesheet" type="text/css" href="style.css" /> 
+  <link rel="stylesheet" type="text/css" href="../style.css" /> 
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
   <meta http-equiv="Content-Style-Type" content="text/css" />
 </head>
 <body>
 <h1>CPAN Modules in Distributions</h1>
-<a href="index.html">index</a>
+<a href="../index.html">index</a>
 <table>
 <tr><td></td>
     <td>CPAN</td>
     <td>Debian</td>
     <td>Fedora</td>
     <td>FreeBSD</td>
-    <td>Mandrake</td>
+    <td>Mandriva</td>
     <td>OpenBSD</td>
     <td>Suse</td>
 <TMPL_LOOP distros>
   <tr>
-    <td><TMPL_VAR name></td>
+    <td class="name"><TMPL_VAR name></td>
     <td><TMPL_VAR cpan></td>
     <td><TMPL_VAR debian></td>
     <td><TMPL_VAR fedora></td>
@@ -233,7 +395,8 @@ Report generated on <TMPL_VAR timestamp>
 using <a href="http://search.cpan.org/dist/Module-Packaged-Report">Module::Packaged::Report</a> 
 version <TMPL_VAR mpr_version>
 and <a href="http://search.cpan.org/dist/Module-Packaged">Module::Packaged</a> version <TMPL_VAR mp_version>. 
-Patches to both modules are welcome by the respective authors.
+Patches to both modules are welcome by the respective authors. Subversion repository of 
+<a href="http://svn1.hostlocal.com/szabgab/trunk/Module-Packaged-Report/">Module-Packaged-Report</a>
 </p>
 END_TMPL
 

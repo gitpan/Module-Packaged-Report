@@ -1,4 +1,13 @@
+v0.02 2007.05.04
+
+- Add report on total number of modules in each distro
+- Replace the name Mandrake by Mandriva
+- Add list of all the modules for each distribution
+- Add dependency on Parse::CPAN::Packages and App::Cache.
+  - Could I just write  use Leon; instead?
+  - Oh, yes it is spelled use Acme;
+- Add report based on CPANid
 
 v0.01 2007.04.28
-First version released
+- First version released
 
