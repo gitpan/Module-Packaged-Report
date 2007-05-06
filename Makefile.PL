@@ -10,7 +10,8 @@ WriteMakefile
                            'HTML::Template' => '0',
                            'Module::Packaged' => '0.86',
                            'Parse::CPAN::Packages' => '0',
-                           'Test::More' => '0.47'
+                           'Test::More' => '0.47',
+                           'YAML' => '0'
                          },
           'INSTALLDIRS' => 'site',
           'EXE_FILES' => [

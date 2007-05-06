@@ -2,154 +2,131 @@ package Module::Packaged::Report;
 use strict;
 use warnings;
 
-use Module::Packaged;
-use Module::Packaged::Generate;
-use HTML::Template;
-use File::Spec;
-use File::Path   qw(mkpath);
-use Parse::CPAN::Packages;
-use App::Cache;
+use Module::Packaged           qw();
+use Module::Packaged::Generate qw();
+use HTML::Template             qw();
+use File::Spec                 qw();   
+use File::Path                 qw(mkpath);
+use Parse::CPAN::Packages      qw();
+use App::Cache                 qw();
+use YAML                       qw(Load);
+#use Data::Dumper               qw(Dumper);
 
-use Data::Dumper qw(Dumper);
-
-our $VERSION = '0.03';
-
-my @distributions = (
-    {
-        title   => 'Debian',
-        name    => 'debian',
-        source  => 'debian_unstable',
-        real    => 'Debian Unstable',
-    },
-    {
-        title   => '',
-        name    => 'debian',
-        source  => 'debian_stable',
-        real    => 'Debian Stable',
-    },
-    {
-        title   => '',
-        name    => 'debian',
-        source  => 'debian_testing',
-        real    => 'Debian Testing',
-    },
-    {
-        title   => '',
-        name    => 'ubuntu',
-        source  => 'ubuntu_gutsy',
-        real    => 'Ubuntu Gutsy Gibbon 7.10',
-    },
-    {
-        title   => 'Ubuntu',
-        name    => 'ubuntu',
-        source  => 'ubuntu_feisty',
-        real    => 'Ubuntu Feisty Fawn 7.04',
-    },
-    {
-        title   => '',
-        name    => 'ubuntu',
-        source  => 'ubuntu_edgy',
-        real    => 'Ubuntu Edgy Eft 6.10',
-    },
-    {
-        title   => '',
-        name    => 'ubuntu',
-        source  => 'ubuntu_dapper',
-        real    => 'Ubuntu Dapper Drake 6.06',
-    },
-    {
-        title   => '',
-        name    => 'ubuntu',
-        source  => 'ubuntu_breezy',
-        real    => 'Ubuntu Breezy Badger 5.10',
-    },
-    {
-        title   => '',
-        name    => 'ubuntu',
-        source  => 'ubuntu_hoary',
-        real    => 'Ubuntu Hoary Hedgehog 5.04',
-    },
-    {
-        title   => '',
-        name    => 'ubuntu',
-        source  => 'ubuntu_warty',
-        real    => 'Ubuntu Warty Warthog 4.10',
-    },
-    {
-        title   => 'Fedora',
-        name    => 'fedora',
-        source  => 'fedora',
-        real    => 'Fedora FC2',
-    },
-    {
-        title   => 'FreeBSD',
-        name    => 'freebsd',
-        source  => 'freebsd',
-        real    => 'FreeBSD',
-    },
-    {
-        title   => 'Mandriva',
-        name    => 'mandriva',
-        source  => 'mandriva',
-        real    => 'Mandriva',
-    },
-    {
-        title  => 'OpenBSD',
-        name   => 'openbsd',
-        source => 'openbsd',
-        real   => 'OpenBSD',
-    },
-    {
-        title  => 'Suse',
-        name   => 'suse',
-        source => 'suse',
-        real   => 'Suse',
-    },
-    {
-        title  => 'Gentoo',
-        name   => 'gentoo',
-        source => 'gentoo',
-        real   => 'Gentoo',
-    },
-    {
-        title  => 'ActivePerl 8xx Windows',
-        name   => 'activeperl_8xx_windows',
-        source => 'activeperl_8xx_windows',
-        real   => 'ActivePerl 8xx Windows',
-    },
-    {
-        title  => '',
-        name   => 'activeperl_8xx_solaris',
-        source => 'activeperl_8xx_solaris',
-        real   => 'ActivePerl 8xx Solaris',
-    },
-    {
-        title  => '',
-        name   => 'activeperl_8xx_linux',
-        source => 'activeperl_8xx_linux',
-        real   => 'ActivePerl 8xx Linux',
-    },
-    {
-        title  => '',
-        name   => 'activeperl_8xx_hp-ux',
-        source => 'activeperl_8xx_hp-ux',
-        real   => 'ActivePerl 8xx HP-UX',
-    },
-    {
-        title  => '',
-        name   => 'activeperl_8xx_darwin',
-        source => 'activeperl_8xx_darwin',
-        real   => 'ActivePerl 8xx Darwin',
-    },
-);
+our $VERSION = '0.04';
 
 my @letters = ('A'..'Z');
+my @distributions;
+my $yml = <<'END_YAML';
+---
+- name: debian
+  real: Debian Unstable
+  source: debian_unstable
+  title: Debian
+- name: debian
+  real: Debian Stable
+  source: debian_stable
+  title: ''
+- name: debian
+  real: Debian Testing
+  source: debian_testing
+  title: ''
+- name: ubuntu
+  real: Ubuntu Gutsy Gibbon 7.10 main
+  source: ubuntu_gutsy_main
+  title: ''
+- name: ubuntu
+  real: Ubuntu Gutsy Gibbon 7.10 universe
+  source: ubuntu_gutsy_universe
+  title: ''
+- name: ubuntu
+  real: Ubuntu Feisty Fawn 7.04 main
+  source: ubuntu_feisty_main
+  title: Ubuntu
+- name: ubuntu
+  real: Ubuntu Feisty Fawn 7.04 universe
+  source: ubuntu_feisty_universe
+  title: ''
+- name: ubuntu
+  real: Ubuntu Edgy Eft 6.10 main
+  source: ubuntu_edgy_main
+  title: ''
+- name: ubuntu
+  real: Ubuntu Edgy Eft 6.10 universe
+  source: ubuntu_edgy_universe
+  title: ''
+- name: ubuntu
+  real: Ubuntu Dapper Drake 6.06 main
+  source: ubuntu_dapper_main
+  title: ''
+- name: ubuntu
+  real: Ubuntu Dapper Drake 6.06 universe 
+  source: ubuntu_dapper_universe
+  title: ''
+- name: ubuntu
+  real: Ubuntu Breezy Badger 5.10
+  source: ubuntu_breezy_main
+  title: ''
+- name: ubuntu
+  real: Ubuntu Hoary Hedgehog 5.04
+  source: ubuntu_hoary_main
+  title: ''
+- name: ubuntu
+  real: Ubuntu Warty Warthog 4.10
+  source: ubuntu_warty_main
+  title: ''
+- name: fedora
+  real: Fedora FC2
+  source: fedora
+  title: Fedora
+- name: freebsd
+  real: FreeBSD
+  source: freebsd
+  title: FreeBSD
+- name: mandriva
+  real: Mandriva
+  source: mandriva
+  title: Mandriva
+- name: openbsd
+  real: OpenBSD
+  source: openbsd
+  title: OpenBSD
+- name: suse
+  real: Suse
+  source: suse
+  title: Suse
+- name: gentoo
+  real: Gentoo
+  source: gentoo
+  title: Gentoo
+- name: activeperl_8xx_windows
+  real: ActivePerl 8xx Windows
+  source: activeperl_8xx_windows
+  title: ActivePerl 8xx Windows
+- name: activeperl_8xx_solaris
+  real: ActivePerl 8xx Solaris
+  source: activeperl_8xx_solaris
+  title: ''
+- name: activeperl_8xx_linux
+  real: ActivePerl 8xx Linux
+  source: activeperl_8xx_linux
+  title: ''
+- name: activeperl_8xx_hp-ux
+  real: ActivePerl 8xx HP-UX
+  source: activeperl_8xx_hp-ux
+  title: ''
+- name: activeperl_8xx_darwin
+  real: ActivePerl 8xx Darwin
+  source: activeperl_8xx_darwin
+  title: ''
+END_YAML
 
 
 sub new {
     my ($class, %opts) = @_;
     usage() if $opts{help};
     usage() if not ($opts{test} xor $opts{real});
+
+    @distributions = @{ Load($yml) };
 
     my $self = bless {}, $class;
     $self->{opts} = \%opts;
@@ -169,7 +146,6 @@ sub collect_data {
     $self->{p} = Module::Packaged::Generate->new;
     $self->{p}->fetch_all;
 }
-
 
 sub _timestamp {
     my ($self) = @_;
@@ -192,19 +168,55 @@ sub generate_html_report {
     mkpath (File::Spec->catfile($dir, 'letters'));
     mkpath (File::Spec->catfile($dir, 'distros'));
     mkpath (File::Spec->catfile($dir, 'authors'));
+    mkpath (File::Spec->catfile($dir, 'missing'));
 
     $self->_save_style;
 
     $self->_process_data;
 
-    foreach my $letter (@letters) {
-        $self->_generate_report_for_letter($letter);
-    }
-
+    $self->_generate_report_for_letters;
     $self->_generate_per_distribution_reports;
     $self->_generate_per_author_report;
+
+    $self->_generate_missing_reports;
     $self->_generate_main_index;
 }
+
+sub _process_data {
+    my ($self) = @_;
+
+    foreach my $dash_name ($self->_list_packages) {
+        my $dists = $self->{p}->check($dash_name);
+        my $name = $dash_name;
+        $name =~ s/-/::/g;
+
+        $self->{count}{cpan}++;
+        next if 1 >= keys %$dists; # skip modules that are only on CPAN
+
+        # collect data for list of modules in a single distro
+        foreach my $distro (keys %$dists) {
+            next if $distro eq 'cpan';
+            $self->{count}{$distro}++;
+            push @{ $self->{distros}{$distro} }, {
+                name    => $name,
+                version => $dists->{$distro},
+                cpan    => $dists->{cpan},
+            };
+        }
+
+        # collect data for modules by each author
+        my $m = $self->{pcp}->package($name);
+        $dists->{name} = $name;
+        if ($m) {
+            my $d = $m->distribution;
+            push @{ $self->{authors}{uc $d->cpanid} }, $dists;
+        } else {
+            #warn "No package for '$name'\n";
+        }
+    }
+}
+
+
 
 sub _generate_main_index {
     my ($self) = @_;
@@ -285,41 +297,12 @@ sub _generate_per_author_report {
     );
 }
 
-sub _process_data {
+sub _generate_report_for_letters {
     my ($self) = @_;
-
-    foreach my $dash_name ($self->_list_packages) {
-        my $dists = $self->{p}->check($dash_name);
-        my $name = $dash_name;
-        $name =~ s/-/::/g;
-
-        $self->{count}{cpan}++;
-        next if 1 >= keys %$dists; # skip modules that are only on CPAN
-
-        # collect data for list of modules in a single distro
-        foreach my $distro (keys %$dists) {
-            next if $distro eq 'cpan';
-            $self->{count}{$distro}++;
-            push @{ $self->{distros}{$distro} }, {
-                name    => $name,
-                version => $dists->{$distro},
-                cpan    => $dists->{cpan},
-            };
-        }
-
-        # collect data for modules by each author
-        my $m = $self->{pcp}->package($name);
-        $dists->{name} = $name;
-        if ($m) {
-            my $d = $m->distribution;
-            push @{ $self->{authors}{uc $d->cpanid} }, $dists;
-        } else {
-            #warn "No package for '$name'\n";
-        }
+    foreach my $letter (@letters) {
+        $self->_generate_report_for_letter($letter);
     }
 }
-
-
 sub _generate_report_for_letter {
     my ($self, $letter) = @_;
 
@@ -354,6 +337,76 @@ sub _generate_report_for_letter {
                 footer        => $self->_footer(),
             },
     );
+}
+sub _generate_missing_reports {
+    my ($self) = @_;
+    my @misses = (
+            [
+                'debian_unstable', 
+                ['ubuntu_gutsy_main', 'ubuntu_gutsy_universe'],
+                "from_ubuntu.html",
+                "Available in Debian Unstable but missing from Ubuntu Gutsy (or different version)",
+            ],
+            [
+                'freebsd', 
+                ['debian_unstable'],
+                "from_debian.html",
+                "Available in FreeBSD but missing from Debian Unstable",
+            ],
+    );
+
+    foreach my $m (@misses) {
+        $self->_generate_missing_from(@$m);
+    }
+
+    my @links = map { {title => $_->[3], file => $_->[2]} } @misses;
+
+    $self->create_file(
+            template => $self->_missing_index_tmpl(),
+            filename => File::Spec->catfile($self->_dir, 'missing', "index.html"),
+            params => {
+                footer        => $self->_footer(),
+                links         => \@links,
+            },
+    );
+}
+
+# List all the modules that are available in Debian unstable and not in Ubuntu Gutsy
+sub _generate_missing_from {
+    my ($self, $distro_has, $distro_misses, $filename, $title) = @_;
+    my @missing;
+    MODULE:
+    foreach my $module (@{ $self->{distros}{$distro_has} }) {
+        (my $dash_name = $module->{name}) =~ s/::/-/g;
+        my $dists = $self->{p}->check($dash_name);
+        foreach my $misses (@$distro_misses) {
+            next MODULE if $dists->{$misses} and $dists->{$misses} eq $dists->{debian_unstable};
+        }
+        my $cpanid = '';
+        if (my $m = $self->{pcp}->package($module->{name})) {
+            if (my $d = $m->distribution) {
+                $cpanid = uc($d->cpanid);
+            }
+        } else {
+            warn "'$module->{name}' has no author!\n";
+        }
+          
+        push @missing, {
+                    name => $module->{name},
+                    url  => ($cpanid ? "../authors/$cpanid.html" : ''),
+                    };
+    }
+    $self->create_file(
+            template => $self->_missing_modules_tmpl(),
+            filename => File::Spec->catfile($self->_dir, 'missing', $filename),
+            params => {
+                title   => $title,
+                modules => \@missing,
+                footer  => $self->_footer(),
+            },
+    );
+
+
 }
 
 sub create_file {
@@ -494,6 +547,8 @@ Modules starting with letter
 <p>
 <a href="authors/">Authors</a>
 <p>
+<a href="missing/">Missing reports</a>
+<p>
 Total number of modules in each distribution:
 <table>
 <tr><td class="name">CPAN</td><td><TMPL_VAR cpan></td></tr>
@@ -548,7 +603,6 @@ END_TMPL
 
 }
 
-
 sub _per_author_report_tmpl {
     return <<'END_TMPL';
 <html>
@@ -566,7 +620,7 @@ sub _per_author_report_tmpl {
     <td rowspan="2">CPAN</td>
 
     <td colspan="3">Debian</td>
-    <td colspan="7">Ubuntu</td>
+    <td colspan="11">Ubuntu</td>
 
     <td rowspan="2">Fedora</td>
     <td rowspan="2">FreeBSD</td>
@@ -583,10 +637,14 @@ sub _per_author_report_tmpl {
     <td class="internal">Unstable</td>
     <td class="internal">Stable</td>
 
-    <td class="internal">Gutsy Gibbon 7.10</td>
-    <td class="internal">Feisty Fawn 7.04</td>
-    <td class="internal">Edgy Eft 6.10</td>
-    <td class="internal">Dapper Drake 6.06</td>
+    <td class="internal">Gutsy Gibbon 7.10 main</td>
+    <td class="internal">Gutsy Gibbon 7.10 universe</td>
+    <td class="internal">Feisty Fawn 7.04 main</td>
+    <td class="internal">Feisty Fawn 7.04 universe</td>
+    <td class="internal">Edgy Eft 6.10 main</td>
+    <td class="internal">Edgy Eft 6.10 universe</td>
+    <td class="internal">Dapper Drake 6.06 main</td>
+    <td class="internal">Dapper Drake 6.06 universe</td>
     <td class="internal">Breezy Badger 5.10</td>
     <td class="internal">Hoary Hedgehog 5.04</td>
     <td class="internal">Warty Warthog 4.10</td>
@@ -673,6 +731,69 @@ END_TMPL
 
 }
 
+sub _missing_index_tmpl {
+    return <<'END_TMPL';
+<html>
+<head>
+  <title>CPAN Modules in Distributions - Missing reports</title>
+  <link rel="stylesheet" type="text/css" href="../style.css" /> 
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+</head>
+<body>
+<center><h1>CPAN Modules in Distributions - missing reports</h1></center>
+<p>
+<a href="../index.html">index</a>
+<p>
+<i>"Missing file cannot be found"</i>
+</p>
+<p>
+<TMPL_LOOP links>
+    <a href="<TMPL_VAR file>"><TMPL_VAR title></a><br />
+</TMPL_LOOP>
+</p>
+<TMPL_VAR footer>
+</body>
+</html>
+END_TMPL
+
+}
+
+sub _missing_modules_tmpl {
+    return <<'END_TMPL';
+<html>
+<head>
+  <title><TMPL_VAR title></title>
+  <link rel="stylesheet" type="text/css" href="../style.css" /> 
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+</head>
+<body>
+<center><h1><TMPL_VAR title></h1></center>
+<p>
+<a href="../index.html">index</a>
+<p>
+<i>"Missing file cannot be found"</i>
+</p>
+<p>
+<ul>
+<TMPL_LOOP modules>
+  <TMPL_IF url>
+    <li><a href="<TMPL_VAR url>"><TMPL_VAR name></a></li>
+  <TMPL_ELSE>
+    <li><TMPL_VAR name></li>
+  </TMPL_IF>
+</TMPL_LOOP>
+</ul>
+</p>
+<TMPL_VAR footer>
+</body>
+</html>
+END_TMPL
+
+}
+
+
 =head1 NAME
 
 Module::Packaged::Report - Generate report upon packages of CPAN distributions
@@ -717,9 +838,13 @@ Coloring, so it will be obvious which distribution carries the latest version an
 which one has a huge? gap.
 
 Explain this!
-Total number of modules on cpan is reported as 14329 while www.cpan.org reports 11563.
+Total number of modules on cpan is reported as 12422 while www.cpan.org reports 11563.
+
+Generate SQLite database of all the raw data to be queried?
 
 =head1 See also
+
+L<Module::Packaged> and L<Module::Packaged::Generate>
 
 L<Parse::Debian::Packages> L<Debian::Package::HTML>
 
@@ -736,4 +861,5 @@ Gabor Szabo <gabor@pti.co.il>
 =cut
 
 1;
+
 
