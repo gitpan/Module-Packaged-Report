@@ -14,6 +14,6 @@ GetOptions(\%opts,
 ) or Module::Packaged::Report::usage();
 
 my $mpr = Module::Packaged::Report->new(%opts);
+$mpr->collect_data;
 $mpr->generate_html_report;
-
 
